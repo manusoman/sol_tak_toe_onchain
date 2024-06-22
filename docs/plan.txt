@@ -1,0 +1,39 @@
+instr[0] == 0 => User registration
+    1. Create user's game account
+    2. Set signin bit in player's account
+
+
+instr[0] == 1 => User login
+    1. Set signin bit in player's account
+
+
+instr[0] == 2 => User logout
+    1. Reset signin bit in player's account
+
+
+instr[0] == 3 => Invite someone for a game
+    1. Get the opponent id from the instruction (instr[1..]).
+    2. Check if the oppnent is free, otherwise throw error.
+    3. Put the opponent id into the relevant field of the player account.
+    4. Put the current user id as the opponent id in the opponent's account.
+
+
+instr[0] == 4 & instr[1] == 0 => Reject game invite
+    1. Clear game state & opponent fields of the opponent's account.
+    2. Clear game state & opponent fields of the current user account.
+
+
+instr[0] == 4 & instr[1] == 1 => Accept game invite
+    1. Create a game account pda (starting with the small user wallet first).
+    2. Whoever starts the game must be put in player1
+    3. Set the opponents game state to 2.
+    4. Set the current user's game state to 2.
+
+
+instr[0] == 5 => User gameplay
+    1. Confirm that it's the user's turn to play.
+    2. Set the box id at the relevant place in the game account.
+
+
+instr[0] == 6 => User account close
+    1.

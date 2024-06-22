@@ -1,0 +1,6 @@
+Game account data structure
+
+0:32    : player1
+32:32   : player2
+64:1    : game status [0 - 9: no. of moves, 10: draw, 11: player1 won, 12: player2 won]
+65:9    : moves [from 1 to 9]

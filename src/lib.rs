@@ -85,7 +85,7 @@ pub fn process_instruction(
         },
 
         1 | 2 => { // User login/logout
-            player_pda_acc.data.borrow_mut()[0] = if instruction_data[0] == 1 { 1 } else { 0 };
+            player_pda_acc.data.borrow_mut()[20] = if instruction_data[0] == 1 { 1 } else { 0 };
             Ok(())
         },
 
@@ -93,16 +93,16 @@ pub fn process_instruction(
             let opponent_pda_acc = next_account_info(acc_iter)?;
             let mut opponent_data = opponent_pda_acc.data.borrow_mut();
 
-            if opponent_data[1] != 0 {
+            if opponent_data[21] != 0 {
                 return Err(ProgramError::InvalidAccountOwner);
             }
 
             let mut player_data = player_pda_acc.data.borrow_mut();
 
-            opponent_data[1] = 1;
-            player_data[1] = 1;
-            copy_keys(&player_pda_acc.key.to_bytes(), &mut opponent_data[2..]);
-            copy_keys(&opponent_pda_acc.key.to_bytes(), &mut player_data[2..]);
+            opponent_data[21] = 1;
+            player_data[21] = 1;
+            copy_keys(&player_pda_acc.key.to_bytes(), &mut opponent_data[22..]);
+            copy_keys(&opponent_pda_acc.key.to_bytes(), &mut player_data[22..]);
 
             Ok(())
         },
@@ -111,14 +111,14 @@ pub fn process_instruction(
             let opponent_pda_acc = next_account_info(acc_iter)?;
             let mut opp_data = player_pda_acc.data.borrow_mut();
             
-            if !same_keys(&opponent_pda_acc.key.to_bytes(), &opp_data[2..]) {
+            if !same_keys(&opponent_pda_acc.key.to_bytes(), &opp_data[22..]) {
                 return Err(ProgramError::InvalidAccountData);
             }
 
             match instruction_data[1] {
                 0 => { // Reject game invite
-                    opp_data[1..].fill(0);
-                    player_pda_acc.data.borrow_mut()[1..].fill(0);
+                    opp_data[21..].fill(0);
+                    player_pda_acc.data.borrow_mut()[21..].fill(0);
                     Ok(())
                 },
 
@@ -165,8 +165,8 @@ pub fn process_instruction(
                     copy_keys(first, &mut game_data[0..32]);
                     copy_keys(second, &mut game_data[32..64]);
                     
-                    opp_data[1] = 2;
-                    player_pda_acc.data.borrow_mut()[1] = 2;
+                    opp_data[21] = 2;
+                    player_pda_acc.data.borrow_mut()[21] = 2;
                     Ok(())
                 },
 

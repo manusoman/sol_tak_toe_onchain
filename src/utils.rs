@@ -5,14 +5,18 @@ use solana_program::{
     clock::Clock
 };
 
+// const PLAYER_ACC_RANDOM_SEED: &[u8; 6] = b"player";
+
+
+
 pub fn get_minimum_balance(account_size: u64) -> Result<u64, ProgramError> {
     let rent = Rent::get()?;
     Ok(rent.minimum_balance(account_size as usize))
 }
 
-pub fn get_starter() -> Result<u8, ProgramError> {
-    let slot = Clock::get()?.slot;
-    Ok((slot % 2) as u8)
+pub fn get_starter() -> u8 {
+    if let Ok(clock) = Clock::get()
+    { (clock.slot % 2) as u8 } else { 0 }
 }
 
 pub fn should_invert(key1: &[u8], key2: &[u8]) -> Result<bool, ProgramError> {
@@ -82,3 +86,13 @@ pub fn get_validated_name(buf: &[u8], min_len: usize) -> Result<String, ProgramE
     
     Err(ProgramError::InvalidInstructionData)
 }
+
+// pub fn verify_player_acc(wallet_id: &[u8], bump: u8, player_acc_id: &[u8], program_id: &Pubkey) -> bool {
+//     let res = Pubkey::create_program_address(
+//         &[wallet_id, PLAYER_ACC_RANDOM_SEED, &[bump]],
+//         program_id
+//     );
+
+//     if res.is_err() { return false; }
+//     same_keys(res.unwrap().as_ref(), player_acc_id)
+// }

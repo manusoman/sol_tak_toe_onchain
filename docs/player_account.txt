@@ -1,6 +1,6 @@
 Player account data structure
 
 0:20    : player name
-20:1    : login bit
+20:1    : login bit [0: offline, 1: online]
 21:1    : game state [0: free, 1: pending opponent's approval, 2: approved]
 22:32   : opponent id

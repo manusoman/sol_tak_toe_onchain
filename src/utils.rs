@@ -42,25 +42,31 @@ pub fn copy_keys(source: &[u8], destination: &mut [u8]) {
     }
 }
 
-pub fn did_win(moves: &[u8], limit: u8) -> bool {
+pub fn did_win(moves: &[u8], start: usize, no_of_moves: usize) -> bool {
+    let limit: u8 = 3;
     let mut diag_sum1: u8 = 0;
     let mut diag_sum2: u8 = 0;
+    let mut plays: [u8; 9] = [0; 9];
+
+    for i in (start..no_of_moves).step_by(2) {
+        plays[moves[i] as usize] = 1;
+    }
 
     for i in 0..3 as usize {
         let mut row_sum: u8 = 0;
         let mut col_sum: u8 = 0;
 
         for j in 0..3 as usize {
-            row_sum += moves[i * 3 + j];
-            col_sum += moves[i + j * 3];
+            row_sum += plays[i * 3 + j];
+            col_sum += plays[i + j * 3];
         }
 
         if row_sum == limit || col_sum == limit {
             return true;
         }
 
-        diag_sum1 += moves[i * 3 + i];
-        diag_sum2 += moves[i * 3 + (2 - i)];
+        diag_sum1 += plays[i * 3 + i];
+        diag_sum2 += plays[i * 3 + (2 - i)];
     }
 
     if diag_sum1 == limit || diag_sum2 == limit {

@@ -97,7 +97,7 @@ pub fn process_instruction(
             let mut player_data = player_pda_acc.data.borrow_mut();
 
             opponent_data[21] = 1;
-            player_data[21] = 1;
+            player_data[21] = 2;
             copy_keys(&player_pda_acc.key.to_bytes(), &mut opponent_data[22..]);
             copy_keys(&opponent_pda_acc.key.to_bytes(), &mut player_data[22..]);
 
@@ -170,8 +170,8 @@ pub fn process_instruction(
                     copy_keys(first, &mut game_data[0..32]);
                     copy_keys(second, &mut game_data[32..64]);
                     
-                    player_data[21] = 2;
-                    opp_data[21] = 2;
+                    player_data[21] = 3;
+                    opp_data[21] = 3;
                     Ok(())
                 },
 
@@ -180,27 +180,32 @@ pub fn process_instruction(
         },
 
         5 => { // User gameplay
-            let idx = instruction_data[1] as usize;
+            let box_number = instruction_data[1];
+            if box_number < 1 || box_number > 9 { return Err(ProgramError::InvalidInstructionData); }
+
             let game_pda_acc = next_account_info(acc_iter)?;
             let mut game_data = game_pda_acc.data.borrow_mut();
+            let no_of_moves = game_data[64] as usize;
 
-            if idx > 8 || game_data[64] > 8 || game_data[65 + idx] != 0 {
+            if no_of_moves >= 9 || game_data[65 + no_of_moves] != 0 {
                 return Err(ProgramError::InvalidInstructionData);
             }
 
-            let (key, n) = if game_data[64] % 2 == 0 { (&game_data[..32], 1) }
-            else { (&game_data[32..64], 10) };
+            let (key, start) = if game_data[64] % 2 == 0
+            { (&game_data[..32], 0) } else { (&game_data[32..64], 1) };
 
-            if !same_keys(&wallet_acc.key.to_bytes(), key) {
+            if !same_keys(player_pda_acc.key.as_ref(), key) {
                 return Err(ProgramError::InvalidAccountData);
             }
 
-            game_data[65 + idx] = n;
+            game_data[65 + no_of_moves] = box_number;
             game_data[64] += 1;
 
-            if game_data[64] > 4 {
-                if did_win(&game_data[65..], n * 3) {
-                    game_data[64] = if n == 1 { 11 } else { 12 };
+            // No need to check if it's a winning move unless
+            // a minimum of 5 moves are played.
+            if game_data[64] >= 5 {
+                if did_win(&game_data[65..], start, game_data[64] as usize) {
+                    game_data[64] = if start == 0 { 11 } else { 12 };
                 } else if game_data[64] == 9 {
                     game_data[64] = 10;
                 }

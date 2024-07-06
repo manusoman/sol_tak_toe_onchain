@@ -64,10 +64,7 @@ pub fn process_instruction(
 
             invoke_signed(
                 &ix, 
-                &[
-                    wallet_acc.clone(),
-                    player_pda_acc.clone()
-                ],
+                &[wallet_acc.clone(), player_pda_acc.clone()],
                 &[&[&wallet_acc.key.to_bytes(), PLAYER_ACC_RANDOM_SEED, &[bump]]]
             )?;
 
@@ -152,20 +149,14 @@ pub fn process_instruction(
     
                         invoke_signed(
                             &ix,
-                            &[
-                                wallet_acc.clone(),
-                                game_pda_acc.clone()
-                            ],
+                            &[wallet_acc.clone(), game_pda_acc.clone()],
                             &[&[seeds[0], seeds[1], seeds[2], &[bump]]]
                         )?;
                     }
 
                     let mut game_data = game_pda_acc.data.borrow_mut();
-                    let (first, second) = if get_starter() == 0 {
-                        (seed1, seed2)
-                    } else {
-                        (seed2, seed1)
-                    };
+                    let (first, second) = if get_starter() == 0
+                    { (seed1, seed2) } else { (seed2, seed1) };
 
                     copy_keys(first, &mut game_data[0..32]);
                     copy_keys(second, &mut game_data[32..64]);
@@ -180,8 +171,7 @@ pub fn process_instruction(
         },
 
         5 => { // User gameplay
-            let box_number = instruction_data[1];
-            if box_number < 1 || box_number > 9 { return Err(ProgramError::InvalidInstructionData); }
+            if instruction_data[1] > 8 { return Err(ProgramError::InvalidInstructionData); }
 
             let game_pda_acc = next_account_info(acc_iter)?;
             let mut game_data = game_pda_acc.data.borrow_mut();
@@ -198,11 +188,11 @@ pub fn process_instruction(
                 return Err(ProgramError::InvalidAccountData);
             }
 
-            game_data[65 + no_of_moves] = box_number;
+            game_data[65 + no_of_moves] = instruction_data[1];
             game_data[64] += 1;
 
             // No need to check if it's a winning move unless
-            // a minimum of 5 moves are played.
+            // a minimum of 5 moves are made.
             if game_data[64] >= 5 {
                 if did_win(&game_data[65..], start, game_data[64] as usize) {
                     game_data[64] = if start == 0 { 11 } else { 12 };
@@ -214,7 +204,11 @@ pub fn process_instruction(
             Ok(())
         },
 
-        6 => { // User account close
+        6 => { // Close game account
+            Ok(())
+        },
+
+        7 => { // Close user account
             let wallet_balance = wallet_acc.lamports();
 
             // Transfer balance to wallet

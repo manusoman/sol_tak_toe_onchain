@@ -31,9 +31,23 @@ instr[0] == 4 & instr[1] == 1 => Accept game invite
 
 
 instr[0] == 5 => User gameplay
+    instr[1]: Box index
     1. Confirm that it's the user's turn to play.
-    2. Set the box id at the relevant place in the game account.
+    2. Set the box index at the relevant place in the game account.
 
 
-instr[0] == 6 => User account close
-    1.
+instr[0] == 6 => Close game account
+    1. Check if the game account exists.
+    2. Only one of the player has to signal closing the game account.
+    3. Check if the account_data[64] is in the set {10, 11, 12}.
+       If not, make the closing user lose the game and do the close.
+    4. Transfer the game account sols to the relevant accounts.
+    5. Close the game account.
+
+
+instr[0] == 7 => Close user account
+    1. Check if the game account exists.
+    2. If the user is currently playing a game, mark it as if the user "lost"
+       and do the related sol transfers.
+    3. Transfer the user account sols to the relevant account
+    4. Close the user account.

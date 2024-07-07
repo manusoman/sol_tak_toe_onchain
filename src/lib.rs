@@ -29,6 +29,7 @@ const GAME_ACC_RANDOM_SEED: &[u8; 4] = b"game";
 const GAME_ACC_SIZE: u64 = 74;
 const PLAYER_ACC_SIZE: u64 = 54;
 const MIN_NAME_LENGTH: usize = 4;
+const GAME_SHARE: u64 = 500_000_000; // 0.5 Sols
 
 
 pub fn process_instruction(
@@ -87,11 +88,16 @@ pub fn process_instruction(
             let opponent_pda_acc = next_account_info(acc_iter)?;
             let mut opponent_data = opponent_pda_acc.data.borrow_mut();
 
-            if opponent_data[21] != 0 {
+            if opponent_data[21] > 1 {
                 return Err(ProgramError::InvalidAccountOwner);
             }
 
             let mut player_data = player_pda_acc.data.borrow_mut();
+            let min_balance = get_minimum_balance(PLAYER_ACC_SIZE)? + GAME_SHARE;
+
+            if player_pda_acc.lamports() < min_balance {
+                **player_pda_acc.lamports.borrow_mut() = min_balance;
+            }
 
             opponent_data[21] = 1;
             player_data[21] = 2;
@@ -101,7 +107,7 @@ pub fn process_instruction(
             Ok(())
         },
 
-        4 => { // Accept/reject game invite
+        4 => { // Accept game invite
             let opponent_pda_acc = next_account_info(acc_iter)?;
             let mut player_data = player_pda_acc.data.borrow_mut();
             let mut opp_data = opponent_pda_acc.data.borrow_mut();
@@ -110,68 +116,51 @@ pub fn process_instruction(
                 return Err(ProgramError::InvalidAccountData);
             }
 
-            match instruction_data[1] {
-                0 => { // Reject game invite
-                    player_data[21..].fill(0);
-                    opp_data[21..].fill(0);
-                    Ok(())
-                },
+            let seed1 = player_pda_acc.key.as_ref();
+            let seed2 = opponent_pda_acc.key.as_ref();
 
-                1 => { // Accept game invite
-                    let seed1 = player_pda_acc.key.as_ref();
-                    let seed2 = opponent_pda_acc.key.as_ref();
+            let seeds = if should_invert(seed1, seed2)? {
+                [seed2, seed1, GAME_ACC_RANDOM_SEED]
+            } else {
+                [seed1, seed2, GAME_ACC_RANDOM_SEED]
+            };
 
-                    let seeds = if should_invert(seed1, seed2)? {
-                        [seed2, seed1, GAME_ACC_RANDOM_SEED]
-                    } else {
-                        [seed1, seed2, GAME_ACC_RANDOM_SEED]
-                    };
+            let (game_pda, bump) = Pubkey::find_program_address(&seeds, program_id);
+            let game_pda_acc = next_account_info(acc_iter)?;
 
-                    let (game_pda, bump) = Pubkey::find_program_address(&seeds, program_id);
-                    let game_pda_acc = next_account_info(acc_iter)?;
-
-                    if !same_keys(game_pda.as_ref(), game_pda_acc.key.as_ref()) {
-                        return Err(ProgramError::InvalidAccountData);
-                    }
-
-                    // Check if the game account already exists because of the improper handling
-                    // from a perivous game. If yes, just reset it and use.
-                    if game_pda_acc.lamports() > 0 {
-                        game_pda_acc.data.borrow_mut().fill(0);
-                    } else {
-                        let ix = create_account(
-                            wallet_acc.key,
-                            &game_pda,
-                            get_minimum_balance(GAME_ACC_SIZE)?,
-                            GAME_ACC_SIZE,
-                            program_id
-                        );
-    
-                        invoke_signed(
-                            &ix,
-                            &[wallet_acc.clone(), game_pda_acc.clone()],
-                            &[&[seeds[0], seeds[1], seeds[2], &[bump]]]
-                        )?;
-                    }
-
-                    let mut game_data = game_pda_acc.data.borrow_mut();
-                    let (first, second) = if get_starter() == 0
-                    { (seed1, seed2) } else { (seed2, seed1) };
-
-                    copy_keys(first, &mut game_data[0..32]);
-                    copy_keys(second, &mut game_data[32..64]);
-                    
-                    player_data[21] = 3;
-                    opp_data[21] = 3;
-                    Ok(())
-                },
-
-                _ => Err(ProgramError::InvalidInstructionData)
+            if !same_keys(game_pda.as_ref(), game_pda_acc.key.as_ref()) {
+                return Err(ProgramError::InvalidAccountData);
             }
+
+            let ix = create_account(
+                wallet_acc.key,
+                &game_pda,
+                get_minimum_balance(GAME_ACC_SIZE)?,
+                GAME_ACC_SIZE,
+                program_id
+            );
+
+            invoke_signed(
+                &ix,
+                &[wallet_acc.clone(), game_pda_acc.clone()],
+                &[&[seeds[0], seeds[1], seeds[2], &[bump]]]
+            )?;
+
+            let mut game_data = game_pda_acc.data.borrow_mut();
+            let (first, second) = if get_starter() == 0
+            { (seed1, seed2) } else { (seed2, seed1) };
+
+            copy_keys(first, &mut game_data[0..32]);
+            copy_keys(second, &mut game_data[32..64]);
+            
+            player_data[21] = 3;
+            opp_data[21] = 3;
+            Ok(())
         },
 
         5 => { // User gameplay
-            if instruction_data[1] > 8 { return Err(ProgramError::InvalidInstructionData); }
+            let box_idx = instruction_data[1];
+            if box_idx > 8 { return Err(ProgramError::InvalidInstructionData); }
 
             let game_pda_acc = next_account_info(acc_iter)?;
             let mut game_data = game_pda_acc.data.borrow_mut();
@@ -188,7 +177,14 @@ pub fn process_instruction(
                 return Err(ProgramError::InvalidAccountData);
             }
 
-            game_data[65 + no_of_moves] = instruction_data[1];
+            // Ensure the same box_idx value doesn't already exist.
+            for i in 0..no_of_moves {
+                if box_idx == game_data[65 + i] {
+                    return Err(ProgramError::InvalidInstructionData);
+                }
+            }
+
+            game_data[65 + no_of_moves] = box_idx;
             game_data[64] += 1;
 
             // No need to check if it's a winning move unless
@@ -204,11 +200,60 @@ pub fn process_instruction(
             Ok(())
         },
 
-        6 => { // Close game account
+        6 => { // Close game
+            let game_pda_acc = next_account_info(acc_iter)?;
+            let game_acc_balance = game_pda_acc.lamports();
+            
+            if game_acc_balance == 0 { return Ok(()); }
+            
+            let opponent_pda_acc = next_account_info(acc_iter)?;
+            let mut game_data = game_pda_acc.data.borrow_mut();
+
+            match game_data[64] {
+                0..=9 => {
+                    **opponent_pda_acc.lamports.borrow_mut() = opponent_pda_acc.lamports().checked_add(game_acc_balance).unwrap();
+                },
+
+                10 => {
+                    let half = game_acc_balance / 2;
+                    **player_pda_acc.lamports.borrow_mut() = player_pda_acc.lamports().checked_add(half).unwrap();
+                    **opponent_pda_acc.lamports.borrow_mut() = opponent_pda_acc.lamports().checked_add(half).unwrap();
+                },
+
+                11 => {
+                    let temp_acc = if same_keys(player_pda_acc.key.as_ref(), &game_data[..32])
+                    { player_pda_acc } else { opponent_pda_acc };
+
+                    **temp_acc.lamports.borrow_mut() = player_pda_acc.lamports().checked_add(game_acc_balance).unwrap();
+                },
+
+                12 => {
+                    let temp_acc = if same_keys(player_pda_acc.key.as_ref(), &game_data[32..64])
+                    { player_pda_acc } else { opponent_pda_acc };
+
+                    **temp_acc.lamports.borrow_mut() = player_pda_acc.lamports().checked_add(game_acc_balance).unwrap();
+                },
+
+                _ => return Err(ProgramError::Custom(0))
+            }
+
+            **game_pda_acc.lamports.borrow_mut() = 0;
+            game_data.fill(0);
+            
             Ok(())
         },
 
-        7 => { // Close user account
+        7 => { // Transfer player account balance to player wallet
+            let min_balance = get_minimum_balance(PLAYER_ACC_SIZE)?;
+            let extra = player_pda_acc.lamports() - min_balance;
+
+            **player_pda_acc.lamports.borrow_mut() = min_balance;
+            **wallet_acc.lamports.borrow_mut() = wallet_acc.lamports().checked_add(extra).unwrap();
+
+            Ok(())
+        },
+
+        8 => { // Close user account
             let wallet_balance = wallet_acc.lamports();
 
             // Transfer balance to wallet

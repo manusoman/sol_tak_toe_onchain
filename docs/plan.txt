@@ -12,22 +12,20 @@ instr[0] == 2 => User logout
 
 
 instr[0] == 3 => Invite someone for a game
-    1. Get the opponent id from the instruction (instr[1..]).
+    1. Get the opponent id from the accounts.
     2. Check if the oppnent is free, otherwise throw error.
-    3. Put the opponent id into the relevant field of the player account.
-    4. Put the current user id as the opponent id in the opponent's account.
+    3. Set the opponents game state to 1. It means oppenent is the invited.
+    4. Set the current user's game state to 2. It means you are the invitee.
+    5. Put the opponent id into the relevant field of the player account.
+    6. Put the current user id as the opponent id in the opponent's account.
 
 
-instr[0] == 4 & instr[1] == 0 => Reject game invite
-    1. Clear game state & opponent fields of the opponent's account.
-    2. Clear game state & opponent fields of the current user account.
-
-
-instr[0] == 4 & instr[1] == 1 => Accept game invite
+instr[0] == 4 => Accept game invite
     1. Create a game account pda (starting with the small user wallet first).
     2. Whoever starts the game must be put in player1
-    3. Set the opponents game state to 2.
-    4. Set the current user's game state to 2.
+    3. Set the opponents game state to 3.       | The status 3 means the game has started
+    4. Set the current user's game state to 3.  | and both of you are not free.
+    
 
 
 instr[0] == 5 => User gameplay
@@ -36,16 +34,21 @@ instr[0] == 5 => User gameplay
     2. Set the box index at the relevant place in the game account.
 
 
-instr[0] == 6 => Close game account
+instr[0] == 6 => Close game
     1. Check if the game account exists.
-    2. Only one of the player has to signal closing the game account.
-    3. Check if the account_data[64] is in the set {10, 11, 12}.
-       If not, make the closing user lose the game and do the close.
-    4. Transfer the game account sols to the relevant accounts.
-    5. Close the game account.
+    2. Check if the game_account_data[64] is in the set {10, 11, 12}.
+       If not, make the closing user lose the game.
+    3. Divide and transfer the game account sols to each of
+       the player accounts as per their winning status.
+    4. Close the account.
 
 
-instr[0] == 7 => Close user account
+instr[0] == 7 => Transfer player account balance to player wallet
+    1. Check if there's more then enough lamports for rent exemption.
+    2. If yes, pass it to the wallet account.
+
+
+instr[0] == 8 => Close user account
     1. Check if the game account exists.
     2. If the user is currently playing a game, mark it as if the user "lost"
        and do the related sol transfers.

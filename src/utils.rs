@@ -1,12 +1,16 @@
 use solana_program::{
+    pubkey::Pubkey,
     program_error::ProgramError,
     sysvar::Sysvar,
     rent::Rent,
     clock::Clock
 };
 
-// const PLAYER_ACC_RANDOM_SEED: &[u8; 6] = b"player";
-
+use super::{
+    PLAYER_ACC_RANDOM_SEED,
+    CHALLENGE_ACC_RANDOM_SEED,
+    GAME_ACC_RANDOM_SEED
+};
 
 
 pub fn get_minimum_balance(account_size: u64) -> Result<u64, ProgramError> {
@@ -19,15 +23,6 @@ pub fn get_starter() -> u8 {
     { (clock.slot % 2) as u8 } else { 0 }
 }
 
-pub fn should_invert(key1: &[u8], key2: &[u8]) -> Result<bool, ProgramError> {
-    for i in 0..32 {
-        if key1[i] < key2[i] { return Ok(false); }
-        if key1[i] > key2[i] { return Ok(true); }
-    }
-
-    Err(ProgramError::InvalidAccountData)
-}
-
 pub fn same_keys(key1: &[u8], key2: &[u8]) -> bool {
     for i in 0..32 {
         if key1[i] != key2[i] { return false; }
@@ -36,20 +31,14 @@ pub fn same_keys(key1: &[u8], key2: &[u8]) -> bool {
     true
 }
 
-pub fn copy_keys(source: &[u8], destination: &mut [u8]) {
-    for i in 0..32 {
-        destination[i] = source[i];
-    }
-}
-
-pub fn did_win(moves: &[u8], start: usize, no_of_moves: usize) -> bool {
+pub fn did_win(moves: &[u8], start: u8, no_of_moves: u8) -> bool {
     let limit: u8 = 3;
     let mut diag_sum1: u8 = 0;
     let mut diag_sum2: u8 = 0;
     let mut plays: [u8; 9] = [0; 9];
 
     for i in (start..no_of_moves).step_by(2) {
-        plays[moves[i] as usize] = 1;
+        plays[moves[i as usize] as usize] = 1;
     }
 
     for i in 0..3 as usize {
@@ -93,12 +82,54 @@ pub fn get_validated_name(buf: &[u8], min_len: usize) -> Result<String, ProgramE
     Err(ProgramError::InvalidInstructionData)
 }
 
-// pub fn verify_player_acc(wallet_id: &[u8], bump: u8, player_acc_id: &[u8], program_id: &Pubkey) -> bool {
-//     let res = Pubkey::create_program_address(
-//         &[wallet_id, PLAYER_ACC_RANDOM_SEED, &[bump]],
-//         program_id
-//     );
+pub fn verify_player_acc(
+    wallet_id: &[u8],
+    player_acc_id: &[u8],
+    bump: u8,
+    program_id: &Pubkey
+) -> bool {
+    if let Ok(key) = Pubkey::create_program_address(
+        &[wallet_id, PLAYER_ACC_RANDOM_SEED, &[bump]],
+        program_id
+    ) { return same_keys(key.as_ref(), player_acc_id); }
 
-//     if res.is_err() { return false; }
-//     same_keys(res.unwrap().as_ref(), player_acc_id)
-// }
+    false
+}
+
+pub fn verify_challenge_acc(
+    player_acc_id: &[u8],
+    opponent_acc_id: &[u8],
+    challenge_acc_id: &[u8],
+    bump: u8,
+    program_id: &Pubkey
+) -> bool {
+    if let Ok(key) = Pubkey::create_program_address(
+        &[player_acc_id, opponent_acc_id, CHALLENGE_ACC_RANDOM_SEED, &[bump]],
+        program_id
+    ) { return same_keys(key.as_ref(), challenge_acc_id); }
+
+    false
+}
+
+pub fn verify_game_acc(
+    challenge_acc_id: &[u8],
+    game_acc_id: &[u8],
+    bump: u8,
+    program_id: &Pubkey
+) -> bool {
+    if let Ok(key) = Pubkey::create_program_address(
+        &[challenge_acc_id, GAME_ACC_RANDOM_SEED, &[bump]],
+        program_id
+    ) { return same_keys(key.as_ref(), game_acc_id); }
+
+    false
+}
+
+pub fn verify_game_players(
+    player_id: &[u8],
+    opponent_id: &[u8],
+    game_acc_data: &[u8]
+) -> bool {
+    (player_id == &game_acc_data[..32] && opponent_id == &game_acc_data[32..64]) ||
+    (opponent_id == &game_acc_data[..32] && player_id == &game_acc_data[32..64])
+}

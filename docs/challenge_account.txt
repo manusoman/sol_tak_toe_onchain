@@ -1,0 +1,6 @@
+Challenge account data structure
+
+Total size => [64]
+
+0:32    : invited id
+32:32   : invitee id

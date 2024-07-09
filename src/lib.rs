@@ -17,6 +17,7 @@ use utils::{
     verify_game_acc,
     verify_game_players,
     get_minimum_balance,
+    get_timestamp,
     get_starter,
     same_keys,
     did_win,
@@ -31,7 +32,7 @@ const PLAYER_ACC_SIZE: u64 = 53;
 const MIN_NAME_LENGTH: usize = 4;
 
 pub const CHALLENGE_ACC_RANDOM_SEED: &[u8; 9] = b"challenge";
-const CHALLENGE_ACC_SIZE: u64 = 64;
+const CHALLENGE_ACC_SIZE: u64 = 72;
 
 pub const GAME_ACC_RANDOM_SEED: &[u8; 4] = b"game";
 const GAME_ACC_SIZE: u64 = 75;
@@ -92,7 +93,7 @@ pub fn process_instruction(
             Ok(())
         },
 
-        3 => { // Invite someone for a game
+        3 => { // Challenge someone for a game
             let opponent_pda_acc = next_account_info(acc_iter)?;
             let challenge_pda_acc = next_account_info(acc_iter)?;
             let challenge_pda_bump = instruction_data[2];
@@ -141,9 +142,11 @@ pub fn process_instruction(
             **player_pda_acc.lamports.borrow_mut() = player_pda_acc.lamports() - GAME_SHARE;
 
             let mut challenge_acc_data = challenge_pda_acc.data.borrow_mut();
+            let timestamp = get_timestamp()?;
 
             challenge_acc_data[..32].copy_from_slice(opponent_pda_acc.key.as_ref());
             challenge_acc_data[32..64].copy_from_slice(player_pda_acc.key.as_ref());
+            challenge_acc_data[64..].copy_from_slice(&timestamp.to_be_bytes());
             opponent_pda_acc.data.borrow_mut()[20] += 1;
 
             Ok(())

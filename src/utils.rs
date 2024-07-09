@@ -18,6 +18,11 @@ pub fn get_minimum_balance(account_size: u64) -> Result<u64, ProgramError> {
     Ok(rent.minimum_balance(account_size as usize))
 }
 
+pub fn get_timestamp() -> Result<u64, ProgramError> {
+    let clock = Clock::get()?;
+    Ok(clock.unix_timestamp as u64)
+}
+
 pub fn get_starter() -> u8 {
     if let Ok(clock) = Clock::get()
     { (clock.slot % 2) as u8 } else { 0 }

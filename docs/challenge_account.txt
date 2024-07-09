@@ -1,6 +1,7 @@
 Challenge account data structure
 
-Total size => [64]
+Total size => [72]
 
 0:32    : invited id
 32:32   : invitee id
+64:8    : timestamp (u64)

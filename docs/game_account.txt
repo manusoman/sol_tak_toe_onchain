@@ -5,5 +5,5 @@ Total size => [75]
 0:32    : player1
 32:32   : player2
 64:1    : no. of moves [0 - 9]
-65:1    : game status [0: unfinished, 1: player1 won, 2: player2 won, 3: draw]
+65:1    : game status [0: unfinished, 1..8: row/col/diagonal of win, 9: draw]
 66:9    : moves as box indices [0 - 8]

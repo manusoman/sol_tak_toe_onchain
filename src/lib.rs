@@ -177,7 +177,7 @@ pub fn process_instruction(
 
             invoke_signed(
                 &ix,
-                &[wallet_acc.clone(), challenge_pda_acc.clone()],
+                &[wallet_acc.clone(), game_pda_acc.clone()],
                 &[&[
                     challenge_pda_acc.key.as_ref(),
                     GAME_ACC_RANDOM_SEED,
@@ -213,25 +213,21 @@ pub fn process_instruction(
 
         5 => { // User gameplay
             let game_pda_acc = next_account_info(acc_iter)?;
-            let player_acc_id = player_pda_acc.key.as_ref();
             let mut game_data = game_pda_acc.data.borrow_mut();
-
-            if game_pda_acc.key.as_ref() != &player_pda_acc.data.borrow()[21..] ||
-                (player_acc_id != &game_data[..32] && player_acc_id != &game_data[32..64]) {
-                return Err(ProgramError::InvalidAccountData);
-            }
-
             let box_idx = instruction_data[2];
             let no_of_moves = game_data[64] as usize;
 
-            let (key, start) = if no_of_moves % 2 == 0
-            { (&game_data[..32], 0) } else { (&game_data[32..64], 1) };
+            let key = if no_of_moves % 2 == 0
+            { &game_data[..32] } else { &game_data[32..64] };
 
-            if key != player_pda_acc.key.as_ref() {
+            if game_pda_acc.key.as_ref() != &player_pda_acc.data.borrow()[21..] ||
+               key != player_pda_acc.key.as_ref() {
                 return Err(ProgramError::InvalidAccountData);
             }
 
-            if box_idx > 8 || no_of_moves >= 9 { return Err(ProgramError::InvalidInstructionData); }
+            if box_idx > 8 || no_of_moves == 9 || game_data[65] > 0 {
+                return Err(ProgramError::InvalidInstructionData);
+            }
 
             // Ensure the same box_idx value doesn't already exist.
             for i in 0..no_of_moves {
@@ -246,20 +242,20 @@ pub fn process_instruction(
             // No need to check if it's a winning move unless
             // a minimum of 5 moves are made.
             if game_data[64] >= 5 {
-                if did_win(&game_data[66..], start, game_data[64]) {
-                    game_data[65] = start + 1;
-                } else if game_data[64] == 9 {
-                    game_data[65] = 3;
-                }
+                let res = did_win(&game_data[66..], game_data[64]);
+                game_data[65] = if game_data[64] == 9 && res == 0 { 9 } else { res };
             }
 
             Ok(())
         },
 
         6 => { // Close game
-            let opponent_pda_acc = next_account_info(acc_iter)?;
             let game_pda_acc = next_account_info(acc_iter)?;
+            let opponent_pda_acc = next_account_info(acc_iter)?;
             let mut game_data = game_pda_acc.data.borrow_mut();
+            
+            let game_acc_balance = game_pda_acc.lamports();
+            if game_acc_balance == 0 { return Ok(()); }
 
             if !verify_game_players(
                 player_pda_acc.key.as_ref(),
@@ -267,36 +263,28 @@ pub fn process_instruction(
                 &game_data[..64]
             ) { return Err(ProgramError::InvalidAccountData); }
 
-            
-            let game_acc_balance = game_pda_acc.lamports();
-            if game_acc_balance == 0 { return Ok(()); }
-
             match game_data[65] {
                 0 => {
                     **opponent_pda_acc.lamports.borrow_mut() = opponent_pda_acc.lamports().checked_add(game_acc_balance).unwrap();
                 },
 
-                1 => {
-                    let temp_acc = if player_pda_acc.key.as_ref() == &game_data[..32]
-                    { player_pda_acc } else { opponent_pda_acc };
-
-                    **temp_acc.lamports.borrow_mut() = temp_acc.lamports().checked_add(game_acc_balance).unwrap();
-                },
-
-                2 => {
-                    let temp_acc = if player_pda_acc.key.as_ref() == &game_data[32..64]
-                    { player_pda_acc } else { opponent_pda_acc };
-
-                    **temp_acc.lamports.borrow_mut() = temp_acc.lamports().checked_add(game_acc_balance).unwrap();
-                },
-
-                3 => {
+                9 => {
                     let half = game_acc_balance / 2;
                     **player_pda_acc.lamports.borrow_mut() = player_pda_acc.lamports().checked_add(half).unwrap();
                     **opponent_pda_acc.lamports.borrow_mut() = opponent_pda_acc.lamports().checked_add(half).unwrap();
                 },
 
-                _ => return Err(ProgramError::Custom(0))
+                _ => {
+                    let temp_acc = if game_data[64] % 2 == 0 {
+                        if player_pda_acc.key.as_ref() == &game_data[32..64]
+                        { player_pda_acc } else { opponent_pda_acc }
+                    } else {
+                        if player_pda_acc.key.as_ref() == &game_data[..32]
+                        { player_pda_acc } else { opponent_pda_acc }
+                    };
+
+                    **temp_acc.lamports.borrow_mut() = temp_acc.lamports().checked_add(game_acc_balance).unwrap();
+                }
             }
 
             **game_pda_acc.lamports.borrow_mut() = 0;

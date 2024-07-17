@@ -36,38 +36,35 @@ pub fn same_keys(key1: &[u8], key2: &[u8]) -> bool {
     true
 }
 
-pub fn did_win(moves: &[u8], start: u8, no_of_moves: u8) -> bool {
-    let limit: u8 = 3;
-    let mut diag_sum1: u8 = 0;
-    let mut diag_sum2: u8 = 0;
+pub fn did_win(moves: &[u8], no_of_moves: u8) -> u8 {
     let mut plays: [u8; 9] = [0; 9];
+    let start = if no_of_moves % 2 == 0 { 1 } else { 0 };
+    let last_move = moves[(no_of_moves - 1) as usize];
+    let row = (last_move / 3) as usize;
+    let col = (last_move % 3) as usize;
+    let limit = 3;
+    let mut row_sum = 0;
+    let mut col_sum = 0;
+    let mut diag1_sum = 0;
+    let mut diag2_sum = 0;
 
     for i in (start..no_of_moves).step_by(2) {
         plays[moves[i as usize] as usize] = 1;
     }
 
     for i in 0..3 as usize {
-        let mut row_sum: u8 = 0;
-        let mut col_sum: u8 = 0;
-
-        for j in 0..3 as usize {
-            row_sum += plays[i * 3 + j];
-            col_sum += plays[i + j * 3];
-        }
-
-        if row_sum == limit || col_sum == limit {
-            return true;
-        }
-
-        diag_sum1 += plays[i * 3 + i];
-        diag_sum2 += plays[i * 3 + (2 - i)];
+        row_sum += plays[row * 3 + i];
+        col_sum += plays[i * 3 + col];
+        diag1_sum += plays[4 * i];
+        diag2_sum += plays[(2 - i) * 3 + i];
     }
 
-    if diag_sum1 == limit || diag_sum2 == limit {
-        return true;
-    }
+    if row_sum == limit { return (row + 1) as u8; }
+    if col_sum == limit { return (4 + col) as u8; }
+    if diag1_sum == limit { return 7; }
+    if diag2_sum == limit { return 8; }
 
-    false
+    0
 }
 
 pub fn get_validated_name(buf: &[u8], min_len: usize) -> Result<String, ProgramError> {

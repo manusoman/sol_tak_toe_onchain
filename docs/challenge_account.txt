@@ -1,7 +1,8 @@
 Challenge account data structure
 
-Total size => [72]
+Total size => [73]
 
 0:32    : invited id
 32:32   : invitee id
-64:8    : timestamp (u64)
+64:1    : game share index
+65:8    : timestamp (u64)

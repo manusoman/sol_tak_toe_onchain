@@ -98,17 +98,14 @@ pub fn process_instruction(
             let challenge_pda_acc = next_account_info(acc_iter)?;
             let challenge_pda_bump = instruction_data[2];
             let stake_idx = instruction_data[3];
-            let game_share = STAKES[stake_idx as usize];
 
             // Only one challenge is possible for a given opponent at any moment.
             // Todo: make this clear to the player with a custom error.
-            if challenge_pda_acc.lamports() > 0 {
-                return Err(ProgramError::InvalidAccountData);
-            }
+            if challenge_pda_acc.lamports() > 0 || same_keys(
+                player_pda_acc.key.as_ref(), opponent_pda_acc.key.as_ref()
+            ) { return Err(ProgramError::InvalidAccountData); }
 
-            if same_keys(player_pda_acc.key.as_ref(), opponent_pda_acc.key.as_ref()) {
-                return Err(ProgramError::InvalidAccountData);
-            }
+            if stake_idx > 2 { return Err(ProgramError::InvalidInstructionData); }
 
             if !verify_challenge_acc(
                 player_pda_acc.key.as_ref(),
@@ -118,6 +115,7 @@ pub fn process_instruction(
                 program_id
             ) { return Err(ProgramError::InvalidAccountData); }
 
+            let game_share = STAKES[stake_idx as usize];
             let balance = player_pda_acc.lamports() - get_minimum_balance(PLAYER_ACC_SIZE)?;
             if balance < game_share { return Err(ProgramError::InsufficientFunds); }
 

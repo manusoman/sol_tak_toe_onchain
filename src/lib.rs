@@ -1,4 +1,7 @@
 mod utils;
+mod player_data;
+mod challenge_data;
+mod game_data;
 
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -23,6 +26,11 @@ use utils::{
     did_win,
     get_validated_name
 };
+
+use player_data::PlayerData;
+use challenge_data::ChallengeData;
+use game_data::GameData;
+use borsh::{BorshSerialize, BorshDeserialize};
 
 entrypoint!(process_instruction);
 
@@ -49,6 +57,7 @@ pub fn process_instruction(
     let wallet_acc = next_account_info(acc_iter)?;
     let player_pda_acc = next_account_info(acc_iter)?;
     let player_pda_acc_bump = instruction_data[0];
+    let mut player_data = PlayerData::parse(player_pda_acc);
 
     if !verify_player_acc(
         wallet_acc.key.as_ref(),
@@ -78,10 +87,8 @@ pub fn process_instruction(
                 &[&[wallet_acc.key.as_ref(), PLAYER_ACC_RANDOM_SEED, &[player_pda_acc_bump]]]
             )?;
 
-            let mut acc_data = player_pda_acc.data.borrow_mut();
-
-            acc_data[0..20].fill(32); // First fill the space with character ' ' (space).
-            acc_data[0..player_name.len()].copy_from_slice(player_name.as_bytes());
+            player_data.set_name(player_name.as_bytes());
+            player_data.write(player_pda_acc);
 
             msg!("Game account created [{}]", player_pda_acc.key.to_string());
             Ok(())
@@ -141,15 +148,20 @@ pub fn process_instruction(
             **challenge_pda_acc.lamports.borrow_mut() = game_share;
             **player_pda_acc.lamports.borrow_mut() = player_pda_acc.lamports() - game_share;
 
-            let mut challenge_acc_data = challenge_pda_acc.data.borrow_mut();
-            let timestamp = get_timestamp()?;
+            let mut challenge_data = ChallengeData::parse(challenge_pda_acc);
+            let mut opponent_data = PlayerData::parse(opponent_pda_acc);
 
-            challenge_acc_data[..32].copy_from_slice(opponent_pda_acc.key.as_ref());
-            challenge_acc_data[32..64].copy_from_slice(player_pda_acc.key.as_ref());
-            challenge_acc_data[64] = stake_idx;
-            challenge_acc_data[65..].copy_from_slice(&timestamp.to_be_bytes());
-            opponent_pda_acc.data.borrow_mut()[20] += 1;
+            challenge_data.set_players(
+                opponent_pda_acc.key.as_ref(),
+                player_pda_acc.key.as_ref()
+            );
 
+            challenge_data.stake_index = stake_idx;
+            challenge_data.timestamp = get_timestamp()?;
+            opponent_data.inc_invitation();
+
+            challenge_data.write(challenge_pda_acc);
+            opponent_data.write(opponent_pda_acc);
             Ok(())
         },
 
@@ -165,8 +177,8 @@ pub fn process_instruction(
                 program_id
             ) { return Err(ProgramError::InvalidAccountData); }
 
-            let mut challenge_acc_data = challenge_pda_acc.data.borrow_mut();
-            let game_share = STAKES[challenge_acc_data[64] as usize];
+            let mut challenge_data = ChallengeData::parse(challenge_pda_acc);
+            let game_share = STAKES[challenge_data.stake_index as usize];
             let balance = player_pda_acc.lamports() - get_minimum_balance(PLAYER_ACC_SIZE)?;
             
             if balance < game_share { return Err(ProgramError::InsufficientFunds); }
@@ -189,73 +201,77 @@ pub fn process_instruction(
                 ]]
             )?;
 
-            let mut game_acc_data = game_pda_acc.data.borrow_mut();
+            let mut game_data = GameData::parse(game_pda_acc);
 
             if get_starter() == 0 {
-                game_acc_data[..64].copy_from_slice(&challenge_acc_data[..64]);
+                game_data.set_players(&challenge_data.invited_id, &challenge_data.invitee_id);
             } else {
-                game_acc_data[..32].copy_from_slice(&challenge_acc_data[32..64]);
-                game_acc_data[32..64].copy_from_slice(&challenge_acc_data[..32]);
+                game_data.set_players(&challenge_data.invitee_id, &challenge_data.invited_id);
             }
 
-            challenge_acc_data.fill(0);
             **challenge_pda_acc.lamports.borrow_mut() = 0;
             **player_pda_acc.lamports.borrow_mut() = player_pda_acc.lamports() - game_share;
             **game_pda_acc.lamports.borrow_mut() = game_share * 2;
 
-            let opponent_pda_acc = next_account_info(acc_iter)?;
             let game_acc_id = game_pda_acc.key.as_ref();
-            let mut player_acc_data = player_pda_acc.data.borrow_mut();
+            let opponent_pda_acc = next_account_info(acc_iter)?;
+            let mut opponent_data = PlayerData::parse(opponent_pda_acc);
 
-            player_acc_data[20] -= 1;
-            player_acc_data[21..].copy_from_slice(game_acc_id);
-            opponent_pda_acc.data.borrow_mut()[21..].copy_from_slice(game_acc_id);
+            player_data.dec_invitation();
+            player_data.set_current_game(game_acc_id);
+            opponent_data.set_current_game(game_acc_id);
 
+            player_data.write(player_pda_acc);
+            opponent_data.write(opponent_pda_acc);
+            ChallengeData::clear(challenge_pda_acc);
+            game_data.write(game_pda_acc);
+            
             Ok(())
         },
 
         5 => { // User gameplay
             let game_pda_acc = next_account_info(acc_iter)?;
-            let mut game_data = game_pda_acc.data.borrow_mut();
+            let mut game_data = GameData::parse(game_pda_acc);
             let box_idx = instruction_data[2];
-            let no_of_moves = game_data[64] as usize;
+            let no_of_moves = game_data.no_of_moves as usize;
 
             let key = if no_of_moves % 2 == 0
-            { &game_data[..32] } else { &game_data[32..64] };
+            { &game_data.player1 } else { &game_data.player2 };
 
-            if game_pda_acc.key.as_ref() != &player_pda_acc.data.borrow()[21..] ||
+            if game_pda_acc.key.as_ref() != &player_data.current_game ||
                key != player_pda_acc.key.as_ref() {
                 return Err(ProgramError::InvalidAccountData);
             }
 
-            if box_idx > 8 || no_of_moves == 9 || game_data[65] > 0 {
+            if box_idx > 8 || no_of_moves == 9 || game_data.game_status > 0 {
                 return Err(ProgramError::InvalidInstructionData);
             }
 
             // Ensure the same box_idx value doesn't already exist.
             for i in 0..no_of_moves {
-                if box_idx == game_data[66 + i] {
+                if box_idx == game_data.moves[i] {
                     return Err(ProgramError::InvalidInstructionData);
                 }
             }
 
-            game_data[66 + no_of_moves] = box_idx;
-            game_data[64] += 1;
+            game_data.moves[no_of_moves] = box_idx;
+            game_data.no_of_moves += 1;
 
             // No need to check if it's a winning move unless
             // a minimum of 5 moves are made.
-            if game_data[64] >= 5 {
-                let res = did_win(&game_data[66..], game_data[64]);
-                game_data[65] = if game_data[64] == 9 && res == 0 { 9 } else { res };
+            if game_data.no_of_moves >= 5 {
+                let res = did_win(&game_data.moves, game_data.no_of_moves);
+                game_data.game_status = if game_data.no_of_moves == 9 && res == 0 { 9 } else { res };
             }
 
+            game_data.write(game_pda_acc);
             Ok(())
         },
 
         6 => { // Close game
             let game_pda_acc = next_account_info(acc_iter)?;
-            let opponent_pda_acc = next_account_info(acc_iter)?;
             let mut game_data = game_pda_acc.data.borrow_mut();
+            let opponent_pda_acc = next_account_info(acc_iter)?;
             
             let game_acc_balance = game_pda_acc.lamports();
             if game_acc_balance == 0 { return Ok(()); }
@@ -290,11 +306,15 @@ pub fn process_instruction(
                 }
             }
 
+            let mut opponent_data = PlayerData::parse(opponent_pda_acc);
+
             **game_pda_acc.lamports.borrow_mut() = 0;
             game_data.fill(0);
-            player_pda_acc.data.borrow_mut()[21..].fill(0);
-            opponent_pda_acc.data.borrow_mut()[21..].fill(0);
+            player_data.clear_current_game();
+            opponent_data.clear_current_game();
             
+            player_data.write(player_pda_acc);
+            opponent_data.write(opponent_pda_acc);
             Ok(())
         },
 
@@ -316,7 +336,7 @@ pub fn process_instruction(
             **player_pda_acc.lamports.borrow_mut() = 0;
 
             // Reset the data
-            player_pda_acc.data.borrow_mut().fill(0);
+            PlayerData::clear(player_pda_acc);
 
             msg!("Game account [{}] closed", player_pda_acc.key.to_string());
             Ok(())

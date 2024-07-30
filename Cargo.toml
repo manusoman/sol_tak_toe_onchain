@@ -7,6 +7,7 @@ edition = "2021"
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
+borsh = {version = "1.5.1", features = ["derive"]}
 proc-macro2 = "1.0.86"
 rustc_version = "0.4.0"
 semver = "1.0.23"

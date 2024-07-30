@@ -4,5 +4,5 @@ Total size => [73]
 
 0:32    : invited id
 32:32   : invitee id
-64:1    : game share index
+64:1    : stake index
 65:8    : timestamp (u64)

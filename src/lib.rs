@@ -57,7 +57,6 @@ pub fn process_instruction(
     let wallet_acc = next_account_info(acc_iter)?;
     let player_pda_acc = next_account_info(acc_iter)?;
     let player_pda_acc_bump = instruction_data[0];
-    let mut player_data = PlayerData::parse(player_pda_acc);
 
     if !verify_player_acc(
         wallet_acc.key.as_ref(),
@@ -86,6 +85,8 @@ pub fn process_instruction(
                 &[wallet_acc.clone(), player_pda_acc.clone()],
                 &[&[wallet_acc.key.as_ref(), PLAYER_ACC_RANDOM_SEED, &[player_pda_acc_bump]]]
             )?;
+
+            let mut player_data = PlayerData::parse(player_pda_acc);
 
             player_data.set_name(player_name.as_bytes());
             player_data.write(player_pda_acc);
@@ -213,6 +214,7 @@ pub fn process_instruction(
             player_pda_acc.set_lamports(player_pda_acc.lamports() - game_share);
             game_pda_acc.set_lamports(game_share * 2);
 
+            let mut player_data = PlayerData::parse(player_pda_acc);
             let game_acc_id = game_pda_acc.key.as_ref();
             let opponent_pda_acc = next_account_info(acc_iter)?;
             let mut opponent_data = PlayerData::parse(opponent_pda_acc);
@@ -230,6 +232,7 @@ pub fn process_instruction(
         },
 
         5 => { // User gameplay
+            let player_data = PlayerData::parse(player_pda_acc);
             let game_pda_acc = next_account_info(acc_iter)?;
             let mut game_data = GameData::parse(game_pda_acc);
             let box_idx = instruction_data[2];
@@ -304,6 +307,7 @@ pub fn process_instruction(
                 }
             }
 
+            let mut player_data = PlayerData::parse(player_pda_acc);
             let mut opponent_data = PlayerData::parse(opponent_pda_acc);
 
             game_pda_acc.set_lamports(0);

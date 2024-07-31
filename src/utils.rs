@@ -1,16 +1,33 @@
 use solana_program::{
-    pubkey::Pubkey,
+    account_info::AccountInfo,
+    clock::Clock,
     program_error::ProgramError,
-    sysvar::Sysvar,
+    pubkey::Pubkey,
     rent::Rent,
-    clock::Clock
+    sysvar::Sysvar
 };
 
 use super::{
     PLAYER_ACC_RANDOM_SEED,
     CHALLENGE_ACC_RANDOM_SEED,
-    GAME_ACC_RANDOM_SEED
+    GAME_ACC_RANDOM_SEED,
+    GameData
 };
+
+pub trait LamportManaged {
+    fn set_lamports(&self, lamports: u64);    
+    fn add_lamports(&self, lamports: u64);  
+}
+
+impl LamportManaged for AccountInfo<'_> {    
+    fn set_lamports(&self, lamports: u64) {
+        **self.lamports.borrow_mut() = lamports;
+    }
+    
+    fn add_lamports(&self, lamports: u64) {
+        **self.lamports.borrow_mut() = self.lamports().checked_add(lamports).unwrap();
+    } 
+}
 
 
 pub fn get_minimum_balance(account_size: u64) -> Result<u64, ProgramError> {
@@ -130,8 +147,10 @@ pub fn verify_game_acc(
 pub fn verify_game_players(
     player_id: &[u8],
     opponent_id: &[u8],
-    game_acc_data: &[u8]
+    game_data: &GameData
 ) -> bool {
-    (player_id == &game_acc_data[..32] && opponent_id == &game_acc_data[32..64]) ||
-    (opponent_id == &game_acc_data[..32] && player_id == &game_acc_data[32..64])
+    (player_id == &game_data.player1 && opponent_id == &game_data.player2) ||
+    (opponent_id == &game_data.player1 && player_id == &game_data.player2)
 }
+
+

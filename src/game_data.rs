@@ -28,6 +28,6 @@ impl GameData {
     }
 
     pub fn write(&self, acc_info: &AccountInfo) {
-        self.serialize(&mut *acc_info.data.borrow_mut());
+        self.serialize(&mut *acc_info.data.borrow_mut()).unwrap();
     }
 }

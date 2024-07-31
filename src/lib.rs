@@ -15,22 +15,22 @@ use solana_program::{
 };
 
 use utils::{
-    verify_player_acc,
+    did_win,
+    get_minimum_balance,
+    get_starter,
+    get_timestamp,
+    get_validated_name,
+    same_keys,
     verify_challenge_acc,
     verify_game_acc,
     verify_game_players,
-    get_minimum_balance,
-    get_timestamp,
-    get_starter,
-    same_keys,
-    did_win,
-    get_validated_name
+    verify_player_acc,
+    LamportManaged
 };
 
 use player_data::PlayerData;
 use challenge_data::ChallengeData;
-use game_data::GameData;
-use borsh::{BorshSerialize, BorshDeserialize};
+pub use game_data::GameData;
 
 entrypoint!(process_instruction);
 
@@ -145,8 +145,8 @@ pub fn process_instruction(
                 ]]
             )?;
 
-            **challenge_pda_acc.lamports.borrow_mut() = game_share;
-            **player_pda_acc.lamports.borrow_mut() = player_pda_acc.lamports() - game_share;
+            challenge_pda_acc.set_lamports(game_share);
+            player_pda_acc.set_lamports(player_pda_acc.lamports() - game_share);
 
             let mut challenge_data = ChallengeData::parse(challenge_pda_acc);
             let mut opponent_data = PlayerData::parse(opponent_pda_acc);
@@ -177,7 +177,7 @@ pub fn process_instruction(
                 program_id
             ) { return Err(ProgramError::InvalidAccountData); }
 
-            let mut challenge_data = ChallengeData::parse(challenge_pda_acc);
+            let challenge_data = ChallengeData::parse(challenge_pda_acc);
             let game_share = STAKES[challenge_data.stake_index as usize];
             let balance = player_pda_acc.lamports() - get_minimum_balance(PLAYER_ACC_SIZE)?;
             
@@ -209,9 +209,9 @@ pub fn process_instruction(
                 game_data.set_players(&challenge_data.invitee_id, &challenge_data.invited_id);
             }
 
-            **challenge_pda_acc.lamports.borrow_mut() = 0;
-            **player_pda_acc.lamports.borrow_mut() = player_pda_acc.lamports() - game_share;
-            **game_pda_acc.lamports.borrow_mut() = game_share * 2;
+            challenge_pda_acc.set_lamports(0);
+            player_pda_acc.set_lamports(player_pda_acc.lamports() - game_share);
+            game_pda_acc.set_lamports(game_share * 2);
 
             let game_acc_id = game_pda_acc.key.as_ref();
             let opponent_pda_acc = next_account_info(acc_iter)?;
@@ -270,46 +270,44 @@ pub fn process_instruction(
 
         6 => { // Close game
             let game_pda_acc = next_account_info(acc_iter)?;
-            let mut game_data = game_pda_acc.data.borrow_mut();
+            let game_data = GameData::parse(game_pda_acc);
             let opponent_pda_acc = next_account_info(acc_iter)?;
             
-            let game_acc_balance = game_pda_acc.lamports();
-            if game_acc_balance == 0 { return Ok(()); }
+            let game_lamports = game_pda_acc.lamports();
+            if game_lamports == 0 { return Ok(()); }
 
             if !verify_game_players(
                 player_pda_acc.key.as_ref(),
                 opponent_pda_acc.key.as_ref(),
-                &game_data[..64]
+                &game_data
             ) { return Err(ProgramError::InvalidAccountData); }
 
-            match game_data[65] {
-                0 => {
-                    **opponent_pda_acc.lamports.borrow_mut() = opponent_pda_acc.lamports().checked_add(game_acc_balance).unwrap();
-                },
+            match game_data.game_status {
+                0 => opponent_pda_acc.add_lamports(game_lamports),
 
                 9 => {
-                    let half = game_acc_balance / 2;
-                    **player_pda_acc.lamports.borrow_mut() = player_pda_acc.lamports().checked_add(half).unwrap();
-                    **opponent_pda_acc.lamports.borrow_mut() = opponent_pda_acc.lamports().checked_add(half).unwrap();
+                    let half = game_lamports / 2;
+                    player_pda_acc.add_lamports(half);
+                    opponent_pda_acc.add_lamports(half);
                 },
 
                 _ => {
-                    let temp_acc = if game_data[64] % 2 == 0 {
-                        if player_pda_acc.key.as_ref() == &game_data[32..64]
+                    let temp_acc = if game_data.no_of_moves % 2 == 0 {
+                        if player_pda_acc.key.as_ref() == &game_data.player2
                         { player_pda_acc } else { opponent_pda_acc }
                     } else {
-                        if player_pda_acc.key.as_ref() == &game_data[..32]
+                        if player_pda_acc.key.as_ref() == &game_data.player1
                         { player_pda_acc } else { opponent_pda_acc }
                     };
 
-                    **temp_acc.lamports.borrow_mut() = temp_acc.lamports().checked_add(game_acc_balance).unwrap();
+                    temp_acc.add_lamports(game_lamports);
                 }
             }
 
             let mut opponent_data = PlayerData::parse(opponent_pda_acc);
 
-            **game_pda_acc.lamports.borrow_mut() = 0;
-            game_data.fill(0);
+            game_pda_acc.set_lamports(0);
+            GameData::clear(game_pda_acc);
             player_data.clear_current_game();
             opponent_data.clear_current_game();
             
@@ -320,20 +318,17 @@ pub fn process_instruction(
 
         7 => { // Transfer player account balance to player wallet
             let min_balance = get_minimum_balance(PLAYER_ACC_SIZE)?;
-            let extra = player_pda_acc.lamports() - min_balance;
 
-            **player_pda_acc.lamports.borrow_mut() = min_balance;
-            **wallet_acc.lamports.borrow_mut() = wallet_acc.lamports().checked_add(extra).unwrap();
+            player_pda_acc.set_lamports(min_balance);
+            wallet_acc.add_lamports(player_pda_acc.lamports() - min_balance);
 
             Ok(())
         },
 
         8 => { // Close user account
-            let wallet_balance = wallet_acc.lamports();
-
             // Transfer balance to wallet
-            **wallet_acc.lamports.borrow_mut() = wallet_balance.checked_add(player_pda_acc.lamports()).unwrap();
-            **player_pda_acc.lamports.borrow_mut() = 0;
+            wallet_acc.add_lamports(player_pda_acc.lamports());
+            player_pda_acc.set_lamports(0);
 
             // Reset the data
             PlayerData::clear(player_pda_acc);

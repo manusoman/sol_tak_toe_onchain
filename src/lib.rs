@@ -90,14 +90,12 @@ pub fn process_instruction(
             player_data.write(player_pda_acc);
 
             msg!("Game account created [{}]", player_pda_acc.key.to_string());
-            Ok(())
         }
 
         1 | 2 => {
             // User login/logout
             // Is it needed?
             // If yes, how to implement it?
-            Ok(())
         }
 
         3 => {
@@ -168,7 +166,6 @@ pub fn process_instruction(
 
             challenge_data.write(challenge_pda_acc);
             opponent_data.write(opponent_pda_acc);
-            Ok(())
         }
 
         4 => {
@@ -237,8 +234,6 @@ pub fn process_instruction(
             opponent_data.write(opponent_pda_acc);
             ChallengeData::clear(challenge_pda_acc);
             game_data.write(game_pda_acc);
-
-            Ok(())
         }
 
         5 => {
@@ -287,7 +282,6 @@ pub fn process_instruction(
             }
 
             game_data.write(game_pda_acc);
-            Ok(())
         }
 
         6 => {
@@ -325,12 +319,10 @@ pub fn process_instruction(
                         } else {
                             opponent_pda_acc
                         }
+                    } else if player_pda_acc.key.as_ref() == &game_data.player1 {
+                        player_pda_acc
                     } else {
-                        if player_pda_acc.key.as_ref() == &game_data.player1 {
-                            player_pda_acc
-                        } else {
-                            opponent_pda_acc
-                        }
+                        opponent_pda_acc
                     };
 
                     temp_acc.add_lamports(game_lamports);
@@ -347,7 +339,6 @@ pub fn process_instruction(
 
             player_data.write(player_pda_acc);
             opponent_data.write(opponent_pda_acc);
-            Ok(())
         }
 
         7 => {
@@ -357,8 +348,6 @@ pub fn process_instruction(
 
             player_pda_acc.set_lamports(min_balance);
             wallet_acc.add_lamports(reminder);
-
-            Ok(())
         }
 
         8 => {
@@ -371,9 +360,10 @@ pub fn process_instruction(
             PlayerData::clear(player_pda_acc);
 
             msg!("Game account [{}] closed", player_pda_acc.key.to_string());
-            Ok(())
         }
 
-        _ => Err(ProgramError::InvalidInstructionData),
-    }
+        _ => return Err(ProgramError::InvalidInstructionData),
+    };
+
+    Ok(())
 }

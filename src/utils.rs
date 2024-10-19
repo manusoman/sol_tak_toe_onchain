@@ -1,34 +1,24 @@
 use solana_program::{
-    account_info::AccountInfo,
-    clock::Clock,
-    program_error::ProgramError,
-    pubkey::Pubkey,
-    rent::Rent,
-    sysvar::Sysvar
+    account_info::AccountInfo, clock::Clock, program_error::ProgramError, pubkey::Pubkey,
+    rent::Rent, sysvar::Sysvar,
 };
 
-use super::{
-    PLAYER_ACC_RANDOM_SEED,
-    CHALLENGE_ACC_RANDOM_SEED,
-    GAME_ACC_RANDOM_SEED,
-    GameData
-};
+use super::{GameData, CHALLENGE_ACC_RANDOM_SEED, GAME_ACC_RANDOM_SEED, PLAYER_ACC_RANDOM_SEED};
 
 pub trait LamportManaged {
-    fn set_lamports(&self, lamports: u64);    
-    fn add_lamports(&self, lamports: u64);  
+    fn set_lamports(&self, lamports: u64);
+    fn add_lamports(&self, lamports: u64);
 }
 
-impl LamportManaged for AccountInfo<'_> {    
+impl LamportManaged for AccountInfo<'_> {
     fn set_lamports(&self, lamports: u64) {
         **self.lamports.borrow_mut() = lamports;
     }
-    
+
     fn add_lamports(&self, lamports: u64) {
         **self.lamports.borrow_mut() = self.lamports().checked_add(lamports).unwrap();
-    } 
+    }
 }
-
 
 pub fn get_minimum_balance(account_size: u64) -> Result<u64, ProgramError> {
     let rent = Rent::get()?;
@@ -41,13 +31,18 @@ pub fn get_timestamp() -> Result<u64, ProgramError> {
 }
 
 pub fn get_starter() -> u8 {
-    if let Ok(clock) = Clock::get()
-    { (clock.slot % 2) as u8 } else { 0 }
+    if let Ok(clock) = Clock::get() {
+        (clock.slot % 2) as u8
+    } else {
+        0
+    }
 }
 
 pub fn same_keys(key1: &[u8], key2: &[u8]) -> bool {
     for i in 0..32 {
-        if key1[i] != key2[i] { return false; }
+        if key1[i] != key2[i] {
+            return false;
+        }
     }
 
     true
@@ -69,17 +64,25 @@ pub fn did_win(moves: &[u8], no_of_moves: u8) -> u8 {
         plays[moves[i as usize] as usize] = 1;
     }
 
-    for i in 0..3 as usize {
+    for i in 0..3 {
         row_sum += plays[row * 3 + i];
         col_sum += plays[i * 3 + col];
         diag1_sum += plays[4 * i];
         diag2_sum += plays[(2 - i) * 3 + i];
     }
 
-    if row_sum == limit { return (row + 1) as u8; }
-    if col_sum == limit { return (4 + col) as u8; }
-    if diag1_sum == limit { return 7; }
-    if diag2_sum == limit { return 8; }
+    if row_sum == limit {
+        return (row + 1) as u8;
+    }
+    if col_sum == limit {
+        return (4 + col) as u8;
+    }
+    if diag1_sum == limit {
+        return 7;
+    }
+    if diag2_sum == limit {
+        return 8;
+    }
 
     0
 }
@@ -97,7 +100,7 @@ pub fn get_validated_name(buf: &[u8], min_len: usize) -> Result<String, ProgramE
             }
         }
     }
-    
+
     Err(ProgramError::InvalidInstructionData)
 }
 
@@ -105,12 +108,13 @@ pub fn verify_player_acc(
     wallet_id: &[u8],
     player_acc_id: &[u8],
     bump: u8,
-    program_id: &Pubkey
+    program_id: &Pubkey,
 ) -> bool {
-    if let Ok(key) = Pubkey::create_program_address(
-        &[wallet_id, PLAYER_ACC_RANDOM_SEED, &[bump]],
-        program_id
-    ) { return same_keys(key.as_ref(), player_acc_id); }
+    if let Ok(key) =
+        Pubkey::create_program_address(&[wallet_id, PLAYER_ACC_RANDOM_SEED, &[bump]], program_id)
+    {
+        return same_keys(key.as_ref(), player_acc_id);
+    }
 
     false
 }
@@ -120,12 +124,19 @@ pub fn verify_challenge_acc(
     opponent_acc_id: &[u8],
     challenge_acc_id: &[u8],
     bump: u8,
-    program_id: &Pubkey
+    program_id: &Pubkey,
 ) -> bool {
     if let Ok(key) = Pubkey::create_program_address(
-        &[player_acc_id, opponent_acc_id, CHALLENGE_ACC_RANDOM_SEED, &[bump]],
-        program_id
-    ) { return same_keys(key.as_ref(), challenge_acc_id); }
+        &[
+            player_acc_id,
+            opponent_acc_id,
+            CHALLENGE_ACC_RANDOM_SEED,
+            &[bump],
+        ],
+        program_id,
+    ) {
+        return same_keys(key.as_ref(), challenge_acc_id);
+    }
 
     false
 }
@@ -134,23 +145,19 @@ pub fn verify_game_acc(
     challenge_acc_id: &[u8],
     game_acc_id: &[u8],
     bump: u8,
-    program_id: &Pubkey
+    program_id: &Pubkey,
 ) -> bool {
     if let Ok(key) = Pubkey::create_program_address(
         &[challenge_acc_id, GAME_ACC_RANDOM_SEED, &[bump]],
-        program_id
-    ) { return same_keys(key.as_ref(), game_acc_id); }
+        program_id,
+    ) {
+        return same_keys(key.as_ref(), game_acc_id);
+    }
 
     false
 }
 
-pub fn verify_game_players(
-    player_id: &[u8],
-    opponent_id: &[u8],
-    game_data: &GameData
-) -> bool {
-    (player_id == &game_data.player1 && opponent_id == &game_data.player2) ||
-    (opponent_id == &game_data.player1 && player_id == &game_data.player2)
+pub fn verify_game_players(player_id: &[u8], opponent_id: &[u8], game_data: &GameData) -> bool {
+    (player_id == &game_data.player1 && opponent_id == &game_data.player2)
+        || (opponent_id == &game_data.player1 && player_id == &game_data.player2)
 }
-
-
